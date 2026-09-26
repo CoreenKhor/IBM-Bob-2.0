@@ -2,42 +2,63 @@
 
 This directory contains the mandatory IBM Bob task-session summary screenshots required for the **IBM Bob 2.0 Hackathon** submission.
 
-## How to Capture and Add Bob Session Screenshots
+---
 
-Follow the official hackathon guide procedure:
+## 📸 Official Hackathon Screenshot Guide
+
+Each participant/team must upload all relevant Bob task session summary screenshots to this directory as evidence of IBM Bob usage.
+
+### Step-by-Step Bob IDE Navigation
 
 ```text
 Bob IDE
    ↓
-Tasks
+Tasks (in chat interface)
    ↓
-Select relevant task
+Select relevant project task (Confirm correct workspace or select 'All')
    ↓
-Open task
+Open task in chat panel
    ↓
-Click task header
+Select task header
    ↓
-Task session consumption summary
+Task session consumption summary displays
    ↓
-Screenshot
+Capture screenshot (PNG format)
    ↓
-Save PNG
-   ↓
-bob_sessions/
+Save to bob_sessions/
 ```
 
-### Naming Convention for PNGs
+---
 
-Please save your task session screenshots using clear, descriptive names:
+## 🏷️ Mandatory File Naming Convention
 
-- `task_01_blast_radius_analyzer.png` — Consumption summary for Change Blast Radius Analyzer task.
-- `task_02_code_decision_detective.png` — Consumption summary for Code Decision Detective task.
-- `task_03_context_switch_recovery.png` — Consumption summary for Context Switch Recovery Assistant task.
+Save all screenshots in **PNG format** for optimal text clarity. File names must follow this exact convention:
 
-### Consumption Summary Checklist
+```text
+<teamname>_task<number>_<short_description>_summary.png
+```
 
-Each screenshot must clearly display:
-- [ ] Task title and execution timestamp
-- [ ] Model tokens consumed (Input / Output)
-- [ ] Tool executions and latency
-- [ ] Total session duration
+### Examples:
+- `teamalpha_task01_blast_radius_analyzer_summary.png`
+- `teamalpha_task02_code_decision_detective_summary.png`
+- `teamalpha_task03_context_switch_recovery_summary.png`
+- `teamalpha_task04_onboarding_assistant_summary.png`
+- `teamalpha_task05_code_review_summary.png`
+
+---
+
+## 🔍 Required Elements in Each Screenshot
+
+To be valid for hackathon judging, each screenshot must clearly show:
+- [ ] Task title and workspace name.
+- [ ] Account instance: `ibm-coding-challenge-uat` (region: `us-east`).
+- [ ] Model tokens consumed (Input / Output / Total).
+- [ ] Tool executions, latency, and duration.
+- [ ] Bobcoin consumption breakdown.
+
+---
+
+## 🪙 Bobcoin Allocation & Usage Tips
+- **Hackathon Allocation**: 40 Bobcoins are provisioned per account.
+- **Instance**: Ensure you select `ibm-coding-challenge-uat` (region: `us-east`) in Bob IDE **Settings > General** to avoid consuming personal Bobcoins.
+- **Monitoring**: Check usage under **Settings > General** or via the Bob Admin dashboard.

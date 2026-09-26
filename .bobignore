@@ -1,0 +1,31 @@
+# IBM Bob Ignore Rules (.bobignore)
+# Prevents Bob from indexing noisy or sensitive files, conserving Bobcoins and context window
+
+# Dependencies
+node_modules/
+vendor/
+.pnpm-store/
+
+# Build artifacts & caches
+dist/
+build/
+out/
+.next/
+.cache/
+*.log
+
+# Git internals
+.git/
+
+# Environment and sensitive keys
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+
+# Temporary & system files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
