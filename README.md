@@ -1,5 +1,7 @@
 # IBM Bob 2.0 — Developer Workflow Acceleration Suite
 
+![Change Blast Radius Analyzer Banner](docs/images/cover_banner.jpg)
+
 > **IBM Bob 2.0 Hackathon Submission**  
 > **Theme**: *Build with purpose using IBM Bob 2.0*  
 > **Submission Deadline**: September 27 at 11:00 PM Malaysia Time (15:00 UTC)  
