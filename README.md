@@ -49,178 +49,182 @@ graph TD
 
 ---
 
-## 🚀 The Developer Workflow Innovations
+## 🎯 1. The Problem
 
-### 1. Change Blast Radius Analyzer
-- **The Problem (Before)**: Modifying a function or schema triggers unknown regressions. Developers spend 45+ minutes manually grepping files and tracing call hierarchies.
-- **The Solution (After)**: IBM Bob traverses the AST, call graphs, API endpoints, and database models to produce an impact map with a calculated risk score.
-- **Impact**: **95% time reduction** (from 45 mins to 2 mins); eliminates undetected breaking contract regressions.
-- **Skill**: [`change-blast-radius-analyzer`](file:///.agents/skills/change-blast-radius-analyzer/SKILL.md)
-
-### 2. Code Decision Detective — “Why Does This Code Exist?”
-- **The Problem (Before)**: Unfamiliar legacy workarounds and magic numbers confuse engineers. Commit rationale is buried in years of Git history, leading to fear of refactoring.
-- **The Solution (After)**: Bob performs automated Git archaeology, tracing originating commits (ignoring whitespace), PR discussions, and issues to generate a "Why This Code Exists" dossier.
-- **Impact**: **95% faster investigation** (from 60–90 mins down to 3 mins); provides an unambiguous **KEEP**, **REFACTOR**, or **DELETE** verdict.
-- **Skill**: [`code-decision-detective`](file:///.agents/skills/code-decision-detective/SKILL.md)
-
-### 3. Context Switch Recovery Assistant ("Resume Me")
-- **The Problem (Before)**: After interruptions (meetings, urgent incidents), engineers take 20–30 minutes to re-read files, decipher unfinished thoughts, and resume work.
-- **The Solution (After)**: Bob parses uncommitted git diffs, modified files, inline `TODO`/`FIXME` notes, and failing tests, generating an instant "Resume Me" briefing with an immediate 3-step action checklist.
-- **Impact**: **92% reduction in cognitive ramp-up** (under 2 minutes resumption).
-- **Skill**: [`context-switch-recovery`](file:///.agents/skills/context-switch-recovery/SKILL.md)
-
-### 4. Smart Developer Onboarding Assistant
-- **The Problem (Before)**: New developers spend weeks understanding repository structures, reading outdated wikis, and configuring local runtimes.
-- **The Solution (After)**: Bob analyzes the entire project structure, maps key entry points, generates verified setup commands, and curates beginner-friendly starter tasks.
-- **Impact**: **Reduces onboarding ramp-up from 2 weeks to 1 day**.
-- **Skill**: [`smart-developer-onboarding`](file:///.agents/skills/smart-developer-onboarding/SKILL.md)
-
-### 5. Intelligent Code Review & Quality Coach
-- **The Problem (Before)**: Senior engineers spend hours reviewing boilerplate, missing subtle concurrency bugs, and re-checking OWASP security risks.
-- **The Solution (After)**: Bob reviews git diffs against OWASP Top 10 standards, flags cyclomatic complexity via Bob tips, and drafts conventional commit messages and PR descriptions.
-- **Impact**: **70% reduction in code review turnaround time**.
-- **Skill**: [`intelligent-code-review`](file:///.agents/skills/intelligent-code-review/SKILL.md)
-
-### 6. Automated Testing & Validation Hub
-- **The Problem (Before)**: Writing comprehensive unit tests, mock factories, and edge-case scenarios is time-consuming and often skipped under deadline pressure.
-- **The Solution (After)**: Bob generates structured AAA-pattern unit tests with synthetic test data, targeting boundary cases and fault injection.
-- **Impact**: **Test authoring accelerated by 4x**; elevates test coverage above 90%.
-- **Skill**: [`automated-testing-hub`](file:///.agents/skills/automated-testing-hub/SKILL.md)
-
-### 7. Release Readiness & Deployment Assistant
-- **The Problem (Before)**: Release managers manually audit dependency updates, database migrations, and changelogs, risking deployment failure.
-- **The Solution (After)**: Bob audits commit ranges, flags non-backward-compatible database migrations, detects configuration drift, and generates release notes.
-- **Impact**: **Zero-surprise deployments**; automated changelog generation in seconds.
-- **Skill**: [`release-readiness-assistant`](file:///.agents/skills/release-readiness-assistant/SKILL.md)
-
-### 8. Legacy Application Modernization Accelerator
-- **The Problem (Before)**: Upgrading legacy frameworks (e.g., Node.js 16 to 22) or migrating from monoliths to microservices carries severe regression risks.
-- **The Solution (After)**: Bob creates a phased modernization roadmap, flags deprecated APIs, and uses literate coding to modernize code blocks safely.
-- **Impact**: **Halves modernization project duration** with automated rollback safeguards.
-- **Skill**: [`legacy-modernization-accelerator`](file:///.agents/skills/legacy-modernization-accelerator/SKILL.md)
+Modern software development moves at high velocity, yet engineering teams operate with significant blind spots. When developers are asked to modify a core service, update a database model, or adjust a function signature, they face critical unknowns:
+- **Hidden Upstream Callers**: Modifying a utility function or service method often breaks distant controllers or background workers.
+- **Contract Drift & Ingress Hazards**: Changes in internal response models cascade to REST/GraphQL APIs and frontend clients without early warning.
+- **Database Schema Cascades**: Renaming or mutating a database column risks breaking un-migrated queries and ORM serialization pipelines.
+- **Test Blindspots**: Engineers struggle to determine which specific unit, integration, or end-to-end test suites cover the modified codepaths.
 
 ---
 
-## 📊 Summary of Measurable Impact
+## 🧩 2. Why Change Impact Analysis Is Difficult
 
-| Workflow | Manual Baseline | With IBM Bob 2.0 | Measured / Expected Improvement |
-| :--- | :--- | :--- | :--- |
-| **Blast Radius Tracing** | 45 minutes | 2 minutes | **95% time reduction**, zero missed call sites |
-| **Code Archeology ("Why")** | 60–90 minutes | 3 minutes | **95% faster investigation**, fear-free refactoring |
-| **Context Switch Resumption**| 25 minutes | < 2 minutes | **92% faster ramp-up**, zero lost mental context |
-| **Developer Onboarding** | 2 weeks | 1 day | **90% acceleration to first merged PR** |
-| **Code Review Cycle** | 3–4 hours | 45 minutes | **70% faster review turnaround**, OWASP verified |
-| **Test Suite Generation** | 4 hours / module | 30 minutes | **87% reduction in test authoring effort** |
+1. **Polyglot & Multi-Tier Codebases**: Modern systems span frontend SPAs (React/TypeScript), backend services (Python/Flask/FastAPI), and relational persistence schemas. Tracing dependencies across language boundaries manually is error-prone.
+2. **Exponential Transitive Cascades**: A 1-line change to `PaymentService` cascades to `handle_checkout`, which routes through `OrderController`, `OrderPage.tsx`, and associated integration test files.
+3. **Manual Grepping is Unreliable**: `grep` and text searches generate false positives in comments and documentation while missing aliased imports or indirect invocations.
+4. **Cognitive Fatigue & Time Sinks**: Manually tracing call graphs takes 45–60 minutes per non-trivial PR, slowing down velocity and causing release anxiety.
 
 ---
 
-## 💡 The IBM Bob 2.0 Value Chain
+## 💡 3. Our Solution: Change Blast Radius Analyzer
 
-The hackathon submission embodies the official 6-stage value chain:
+The **Change Blast Radius Analyzer** is an intelligent, developer-centric workflow tool that automatically scans code changes and computes an exact **Blast Radius Impact Report** in milliseconds.
 
-```text
-Problem
-   ↓
-Existing workflow
-   ↓
-Our solution
-   ↓
-Where IBM Bob is used
-   ↓
-How Bob improves the workflow
-   ↓
-Result/impact
+Key highlights:
+- **Multi-Hop Dependency Traversal**: Traces direct and transitive callers across service, model, controller, route, and UI layers.
+- **Explainable Impact ("Why affected")**: Generates contextual rationales for every affected component.
+- **Live Visual Blast Radius Graph**: Renders interactive Mermaid dependency trees.
+- **Risk Scoring & Breaking Hazard Detection**: Categorizes blast risk (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) based on API boundaries and database persistence.
+- **Prescriptive Validation Plan**: Generates exact CLI commands (`pytest`, `npm test`) and migration checklists needed before merging.
+
+---
+
+## ⚙️ 4. How the Analyzer Works
+
+```mermaid
+flowchart TD
+    A[Developer Inputs Change: Target File, Symbol, Description, Change Type] --> B[CodebaseGraph Analyzer]
+    B --> C1[AST Parsing: Python AST & TypeScript/JavaScript Regex Parser]
+    B --> C2[Dependency & Import Graph Builder]
+    B --> C3[Route & Controller Ingress Matcher]
+    B --> C4[Database Model & Schema Mapper]
+    
+    C1 & C2 & C3 & C4 --> D[ImpactAnalyzer Core]
+    D --> E1[Multi-Hop Caller Traversal]
+    D --> E2[Risk & Hazard Assessment Engine]
+    D --> E3[Test Suite Coverage Mapper]
+    D --> E4[Explainability Engine: Why-Affected Generator]
+    
+    E1 & E2 & E3 & E4 --> F[ReportBuilder]
+    F --> G[Structured JSON Report + Visual Mermaid Diagram]
+    G --> H[React Developer Dashboard]
 ```
 
-1. **Problem**: Developers waste substantial hours navigating dependency ripple effects, forgotten code rationale, and frequent context switches.
-2. **Existing Workflow**: Manual `grep` commands, searching closed PRs, asking former authors, or re-reading diffs after interruptions.
-3. **Our Solution**: A modular Agentic Workflow Suite powered by IBM Bob workspace skills.
-4. **Where IBM Bob is Used**:
-   - Semantic code reasoning and AST traversal.
-   - Line-level Git blame and commit metadata mining.
-   - Working tree diff analysis and inline annotation parsing.
-   - Structured document understanding and report generation.
-5. **How Bob Improves It**: Delivers instant, deterministic synthesis in a single pass without human error.
-6. **Result / Impact**: Measured 70%–95% time savings across engineering tasks while safeguarding architecture.
+1. **Codebase Indexing**: Parses Python ASTs and TypeScript component trees into a directed symbol dependency graph.
+2. **Target Resolution**: Maps developer inputs to specific class methods, functions, or UI components.
+3. **Multi-Hop Graph Traversal**: Recursively traverses upstream callers, API ingress routes, and database models.
+4. **Risk & Hazard Heuristics**: Evaluates signature changes, schema modifications, and public API exposures.
+5. **Report & Visual Synthesis**: Compiles structured metrics and Mermaid graph syntax returned via REST API.
 
 ---
 
-## 🌐 Optional IBM watsonx Product Integrations
+## 🏛️ 5. System Architecture
 
-- **IBM watsonx.ai**:
-  - Leverages IBM **Granite** models via Prompt Lab as a specialized inference provider for security analysis, test result triage, and conversational onboarding.
-- **IBM watsonx Orchestrate**:
-  - Integrates Bob skills into automated enterprise business processes, triggering CI/CD pipelines, assigning tickets, and coordinating multi-agent handoffs.
-
----
-
-## 📸 Bob Session Summaries (`bob_sessions/`)
-
-The hackathon requires capturing Bob task-session summary screenshots directly from the Bob IDE:
-
-```text
-Bob IDE
-   ↓
-Tasks
-   ↓
-Select relevant task
-   ↓
-Open task
-   ↓
-Click task header
-   ↓
-Task session consumption summary
-   ↓
-Screenshot
-   ↓
-Save PNG: <teamname>_task<number>_<desc>_summary.png
-   ↓
-bob_sessions/
-```
-
-All screenshots are stored in [`bob_sessions/`](file:///bob_sessions/):
-- `bob_sessions/teamalpha_task01_blast_radius_analyzer_summary.png`
-- `bob_sessions/teamalpha_task02_code_decision_detective_summary.png`
-- `bob_sessions/teamalpha_task03_context_switch_recovery_summary.png`
-
-Detailed instructions are available in [`bob_sessions/README.md`](file:///bob_sessions/README.md).
-
----
-
-## 🪙 Bobcoin Optimization Strategy (40 Bobcoins Quota)
-
-To ensure the team maximizes the 40 Bobcoins allocated per account:
-1. **Targeted Context**: Use `@file` and `@folder` mentions instead of full repository scans.
-2. **Exclusion Rules**: Enforce [`.bobignore`](file:///.bobignore) to block noisy directories (`node_modules/`, `dist/`).
-3. **Prompt Enhancement**: Use the built-in Enhance Prompt feature (sparkles icon) to generate concise, high-yield instructions.
-4. **Subagent Scoping**: Delegate narrow, well-defined tasks to subagents to prevent unbounded context growth.
-5. **Account Instance**: Always verify the selected instance is `ibm-coding-challenge-uat` (region: `us-east`).
-
----
-
-## 📂 Repository Structure & Skills Catalog
+The project is structured into three clean layers:
 
 ```text
 IBM-Bob-2.0/
-├── .agents/
-│   └── skills/                                  # Workspace skill definitions
-│       ├── change-blast-radius-analyzer/        # Blast radius analysis
-│       ├── code-decision-detective/             # Code archeology & "Why" deduction
-│       ├── context-switch-recovery/             # Context snapshot & "Resume Me"
-│       ├── smart-developer-onboarding/          # Repo walkthrough & starter tasks
-│       ├── intelligent-code-review/             # PR reviews, Bob tips & security
-│       ├── automated-testing-hub/               # Test generation & coverage analysis
-│       ├── release-readiness-assistant/         # Release notes & deployment checks
-│       ├── legacy-modernization-accelerator/    # Phased runtime & stack upgrades
-│       └── hackathon-workflow-guide/            # Submission compliance & checklist
-├── skills/                                      # Workspace-mirrored skills
-├── bob_sessions/                                # Bob task-session screenshots
-│   ├── README.md                                # Screenshot naming & capture guide
-│   └── .gitkeep
-├── AGENTS.md                                    # Persistent Bob IDE context & rules
-├── .bobignore                                   # Bob indexing exclusion rules
-└── README.md                                    # Comprehensive hackathon documentation
+├── backend/                             # Python / Flask Analysis Engine
+│   ├── app.py                           # REST API Server (Endpoints: /api/tree, /api/symbols, /api/analyze)
+│   ├── engine/                          # Core Graph & Analysis Algorithms
+│   │   ├── codebase_graph.py            # AST & multi-language dependency graph indexer
+│   │   ├── impact_analyzer.py           # Blast radius, hazard detection & test matcher
+│   │   ├── target_resolver.py           # AST & regex symbol locator
+│   │   ├── report_builder.py            # Report formatting & Mermaid diagram generator
+│   │   └── models.py                    # Structured dataclasses
+│   └── tests/                           # 183 automated unit, integration & scenario tests
+│       ├── test_scenarios.py            # 5 end-to-end hackathon scenarios
+│       ├── test_impact_analyzer.py      # Core impact algorithm validation
+│       ├── test_api_endpoints.py        # Flask REST API testing
+│       └── test_codebase_analyzer.py    # AST & graph parser unit tests
+├── frontend/                            # React 18 + TypeScript + Vite Developer Dashboard
+│   ├── src/
+│   │   ├── App.tsx                      # Main workbench & state manager
+│   │   ├── api.ts                       # Typed REST client
+│   │   ├── types.ts                     # Full TypeScript schema definitions
+│   │   └── components/
+│   │       ├── FileTree.tsx             # Interactive project file explorer
+│   │       ├── AnalyzeForm.tsx          # Change input & 5 demo scenario quick-starts
+│   │       ├── ImpactReport.tsx         # Comprehensive impact dashboard & risk cards
+│   │       └── MermaidDiagram.tsx       # Interactive visual graph renderer
+└── .agents/skills/                      # IBM Bob 2.0 Skill definitions
+    └── change-blast-radius-analyzer/    # Native Bob skill instructions & context
 ```
+
+---
+
+## 🛠️ 6. Technology Stack
+
+- **Backend**: Python 3.11, Flask, Flask-CORS, Python standard `ast`, Pytest (183 tests).
+- **Frontend**: React 18, TypeScript, Vite, TailwindCSS, Mermaid.js (SVG graph visualization).
+- **Tooling & IDE**: IBM Bob 2.0 (Plan Mode, Code Mode, Agent Mode, Subagents, Context Mentions).
+
+---
+
+## 🤖 7. How IBM Bob 2.0 Was Used
+
+IBM Bob 2.0 served as the primary agentic engine throughout development:
+- **Modes Workflow**: Used **Plan Mode** for architectural mapping of graph traversal algorithms before executing code edits in **Code Mode**.
+- **Agent Mode & Subagents**: Spawned isolated subagents to independently build and test the 5 hackathon scenario test suites without polluting global context.
+- **Context Mentions (`@file`, `@folder`)**: Used targeted context pointers (`@services/payment_service.py`, `@backend/engine/`) to keep prompt iterations fast and conserve the 40 Bobcoins quota.
+- **Local AST Strategy**: Designed the engine to perform graph calculations locally (<20ms), reserving Bob reasoning for complex architectural synthesis.
+
+---
+
+## ⚡ 8. How to Run the Project
+
+### Prerequisites
+- Python 3.10+
+- Node.js 18+ and npm
+
+### 1. Launch the Backend Engine
+```bash
+# In repository root:
+python -m pip install flask flask-cors pytest
+python backend/app.py
+# -> Backend active on http://127.0.0.1:5000
+```
+
+### 2. Launch the Frontend UI
+```bash
+cd frontend
+npm install
+npm run dev
+# -> Frontend active on http://127.0.0.1:5173/
+```
+
+### 3. Run the Automated Test Suite
+```bash
+python -m pytest backend/tests/ -v
+# -> 183 passed in 0.6s
+```
+
+---
+
+## 🎮 9. Example Usage & 3-Minute Demo
+
+1. Open `http://127.0.0.1:5173/` in your browser.
+2. Select any of the **5 Demo Quick-Start Scenarios**:
+   - **💳 1. PaymentService (Stripe provider)**: Adding Stripe to `process_payment` triggers `HIGH` risk, surfacing upstream callers (`PaymentController`, `OrderService`), API routes (`/api/v1/payments`), and database sinks (`Payment`).
+   - **🧾 2. OrderService (Status handling)**: Modifying order state machine in `confirm_order` tracks dependencies through `OrderPage.tsx` and order APIs.
+   - **👤 3. UserService (Add phone number)**: Schema change in `register_user` highlights authentication ingress and database hazards.
+   - **🗄️ 4. Payment Model (Schema update)**: Database column additions cascade upward to service methods and controllers.
+   - **🛒 5. Checkout UI (Frontend flow)**: UI state refactoring highlights child components and backend checkout APIs.
+3. Click **🔍 Analyze Blast Radius** to inspect:
+   - Risk rating banner and blast metric counters.
+   - Interactive Mermaid dependency graph.
+   - Explainable *"Why affected"* cards for all callers.
+   - Actionable CLI testing commands.
+
+---
+
+## 🔍 10. Known Technical Limitations
+
+1. **Static AST Analysis Scope**: Relies on static AST syntax trees and regex symbol mapping. Dynamic reflections (e.g. Python `getattr(obj, dynamic_str)`) require explicit symbol references.
+2. **Supported Languages**: Out-of-the-box support for Python backend code and TypeScript/JavaScript React frontend files.
+3. **Database Introspection**: Model relationships are extracted from ORM classes and DDL code rather than querying a live running database instance.
+4. **Bobcoin Optimization**: Local graph computation runs deterministically without burning cloud LLM tokens on simple traversals.
+
+---
+
+## 🔮 11. Future Improvements
+
+1. **Git Diff PR Ingestion**: Add GitHub/GitLab webhook integration to automatically run blast radius analysis on incoming PR diffs.
+2. **Polyglot Grammar Extensions**: Add Tree-sitter parsers for Java (Spring Boot), Go (Gin/Fiber), and C#.
+3. **Live Database Migration Diffing**: Connect to staging databases to compare active schema catalogs against ORM model definitions.
+4. **Automated Test Generation Handoff**: Connect blast radius output directly into IBM Bob's `automated-testing-hub` skill to auto-generate missing test cases for uncovered callers.
 
 ---
 
@@ -240,4 +244,4 @@ In strict compliance with IBM Bob Hackathon rules:
 
 - **`main`**: Production release and official hackathon submission branch.
 - **`jish`**: Active development branch.
-- **`coreen`**: Collaborative teammate feature branch.
+- **`coreen`**: Collaborative teammate feature branch.

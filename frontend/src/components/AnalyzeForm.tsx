@@ -3,6 +3,7 @@ import { fetchSymbols } from '../api'
 
 interface Props {
   targetFile: string
+  onFileSelect: (file: string) => void
   onSubmit: (symbol: string, description: string, changeType: string) => void
   loading: boolean
 }
@@ -20,22 +21,43 @@ const CHANGE_TYPES = [
 // Quick-start demo scenarios
 const DEMO_SCENARIOS = [
   {
-    label: '💳 process_payment (HIGH risk)',
+    label: '💳 1. PaymentService (Stripe provider)',
     file: 'services/payment_service.py',
     symbol: 'process_payment',
-    description: 'Add support for a new payment provider',
+    description: 'Support new Stripe payment provider and webhook handling',
     changeType: 'api_change',
   },
   {
-    label: '🧾 calculate_order_total (CRITICAL risk)',
+    label: '🧾 2. OrderService (Status handling)',
     file: 'services/order_service.py',
-    symbol: 'calculate_order_total',
-    description: 'Add a tax_rate parameter and update return type to include pre/post-tax totals',
-    changeType: 'signature_change',
+    symbol: 'confirm_order',
+    description: 'Update order status state machine to handle pending_payment',
+    changeType: 'general',
+  },
+  {
+    label: '👤 3. UserService (Add phone number)',
+    file: 'services/user_service.py',
+    symbol: 'register_user',
+    description: 'Add phone_number field validation and persistence',
+    changeType: 'schema_change',
+  },
+  {
+    label: '🗄️ 4. Payment Model (Schema update)',
+    file: 'models/payment.py',
+    symbol: 'Payment',
+    description: 'Add transaction_fee and provider_ref columns',
+    changeType: 'schema_change',
+  },
+  {
+    label: '🛒 5. Checkout UI (Frontend flow)',
+    file: 'frontend/Checkout.tsx',
+    symbol: 'Checkout',
+    description: 'Refactor checkout payment method selection and state',
+    changeType: 'refactor',
   },
 ]
 
-export default function AnalyzeForm({ targetFile, onSubmit, loading }: Props) {
+export default function AnalyzeForm({ targetFile, onFileSelect, onSubmit, loading }: Props) {
   const [symbol, setSymbol] = useState('')
   const [description, setDescription] = useState('')
   const [changeType, setChangeType] = useState('general')
@@ -61,10 +83,12 @@ export default function AnalyzeForm({ targetFile, onSubmit, loading }: Props) {
   }
 
   const applyScenario = (scenario: typeof DEMO_SCENARIOS[0]) => {
+    onFileSelect(scenario.file)
     setSymbol(scenario.symbol)
     setDescription(scenario.description)
     setChangeType(scenario.changeType)
   }
+
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -100,18 +124,18 @@ export default function AnalyzeForm({ targetFile, onSubmit, loading }: Props) {
         </div>
       </div>
 
-      {/* Symbol picker */}
+      {/* Target Component Selector */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-          Symbol / Function <span className="text-red-500 normal-case font-normal">*</span>
+        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+          Target Component / Symbol <span className="text-red-500 normal-case font-normal">*</span>
         </label>
         {symbols.length > 0 ? (
           <select
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-mono shadow-sm"
           >
-            <option value="">— choose a symbol —</option>
+            <option value="">— Select symbol from file —</option>
             {symbols.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -125,10 +149,10 @@ export default function AnalyzeForm({ targetFile, onSubmit, loading }: Props) {
               symbolsLoading
                 ? 'Loading symbols…'
                 : targetFile
-                  ? 'No symbols found — type manually'
-                  : 'e.g. process_payment'
+                  ? 'Enter symbol name (e.g. process_payment)'
+                  : 'Select a file or enter symbol name'
             }
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono shadow-sm"
           />
         )}
       </div>

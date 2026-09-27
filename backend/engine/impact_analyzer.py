@@ -333,8 +333,18 @@ def _trace_affected(
         f = edge.from_file
         if f == target_file or f in direct_files:
             continue
-        directly.append(_make_component(graph, f, depth=1,
-            reason=f"Directly calls `{target_symbol}`"))
+        # Explain based on the caller file's role/layer
+        flayer = graph.files[f].layer if f in graph.files else "module"
+        if flayer == "controller":
+            reason = f"Calls `{target_symbol}` in request handling flow — changes to parameter signature, return shape, or error handling will directly affect controller responses."
+        elif flayer == "route":
+            reason = f"Directly invokes `{target_symbol}` in API route handler — changes may break the HTTP endpoint contract."
+        elif flayer == "service":
+            reason = f"Calls `{target_symbol}` in business workflow — updates to behavior or return types may cascade through service logic."
+        else:
+            reason = f"Directly calls `{target_symbol}` at line {edge.line} — requires review for compatible arguments and return types."
+
+        directly.append(_make_component(graph, f, depth=1, reason=reason))
         direct_files.add(f)
 
     # ImportEdge importers (files that do `from X import target_symbol`)
@@ -343,34 +353,43 @@ def _trace_affected(
             f = imp.from_file
             if f == target_file or f in direct_files:
                 continue
-            directly.append(_make_component(graph, f, depth=1,
-                reason=f"Imports `{target_symbol}` from `{target_file}`"))
+            flayer = graph.files[f].layer if f in graph.files else "module"
+            reason = (
+                f"Imports `{target_symbol}` from `{target_file}` — depends on this symbol's exported contract and interface."
+            )
+            directly.append(_make_component(graph, f, depth=1, reason=reason))
             direct_files.add(f)
 
     # Also include files that import the TARGET FILE itself (module-level import)
-    # e.g. `from services import order_service` → the whole module is a dependency
     target_module = target_file.replace("/", ".").removesuffix(".py")
     for imp in graph.imports:
         if imp.to_file == target_file and not imp.names:
-            # bare module import
             f = imp.from_file
             if f == target_file or f in direct_files:
                 continue
-            directly.append(_make_component(graph, f, depth=1,
-                reason=f"Imports module `{target_module}`"))
+            reason = f"Imports module `{target_module}` — uses services/types exported by `{target_file}`."
+            directly.append(_make_component(graph, f, depth=1, reason=reason))
             direct_files.add(f)
 
     # Indirect: files that import from any direct file
     indirect_files: set[str] = set()
     indirectly: list[AffectedComponent] = []
     for d1_file in list(direct_files):
+        d1_name = d1_file.rsplit("/", 1)[-1]
         for imp in graph.imports:
             if imp.to_file == d1_file:
                 f = imp.from_file
                 if f in direct_files or f == target_file or f in indirect_files:
                     continue
-                indirectly.append(_make_component(graph, f, depth=2,
-                    reason=f"Imports from `{d1_file}` (which calls `{target_symbol}`)"))
+                flayer = graph.files[f].layer if f in graph.files else "module"
+                if flayer == "route":
+                    reason = f"Routes to `{d1_name}` (which depends on `{target_symbol}`) — changes may cascade to API endpoint responses."
+                elif flayer == "frontend":
+                    reason = f"Consumes API routes backed by `{d1_name}` — frontend payload parsing or UX flow may require adjustment."
+                else:
+                    reason = f"Imports from `{d1_name}` (which calls `{target_symbol}`) — indirect transitive dependency."
+
+                indirectly.append(_make_component(graph, f, depth=2, reason=reason))
                 indirect_files.add(f)
 
     return directly, indirectly
@@ -436,7 +455,7 @@ def _find_tests(
             "function":    test_fn,
             "test_type":   test_type,
             "command":     f"pytest {test_file} -v -k {test_fn}",
-            "reason":      f"{test_type.capitalize()} test covering `{covered}`",
+            "reason":      f"Exercises `{covered}` ({test_type} test) — validates regression boundaries and assertion contracts for this change.",
         })
 
     # a) direct test coverage of the target symbol
@@ -469,6 +488,13 @@ def _find_tests(
                 t = "integration" if ("route" in edge.test_file or "checkout" in edge.test_file) else "unit"
                 _add(edge.test_file, edge.test_function, sym_name, t)
 
+    # d) frontend integration tests (e.g. test_checkout.py for frontend/Checkout.tsx or test_payment_*.py for frontend/PaymentForm.tsx)
+    if target_file.startswith("frontend/"):
+        target_stem = target_file.rsplit("/", 1)[-1].split(".")[0].lower()
+        for edge in graph.test_covers:
+            if target_stem in edge.test_file.lower() or target_stem in edge.test_function.lower():
+                _add(edge.test_file, edge.test_function, target_symbol, "integration")
+
     return results
 
 
@@ -488,11 +514,28 @@ def _find_apis(
 
     An API is considered related if:
       - Its defining file is in the directly/indirectly affected set, OR
-      - Its defining file imports the target file
+      - Its defining file imports the target file, OR
+      - The target file is a frontend component that makes fetch calls matching the route path.
     """
     relevant_files: set[str] = {target_file}
     relevant_files.update(c.file for c in directly)
     relevant_files.update(c.file for c in indirectly)
+
+    # If target is frontend, read its source to find any /api/... calls
+    frontend_api_paths: set[str] = set()
+    if target_file.startswith("frontend/"):
+        import os
+        from engine.codebase_graph import DEMO_ROOT
+        abs_path = os.path.join(DEMO_ROOT, target_file)
+        try:
+            source = open(abs_path, encoding="utf-8").read()
+            # Match paths like '/orders', '/payments', '/users/:id', etc.
+            found_paths = re.findall(r"""['"`](/api/[^'"`?]+|/orders[^'"`?]*|/payments[^'"`?]*|/users[^'"`?]*)['"`]""", source)
+            for p in found_paths:
+                clean_p = p.replace("/api", "")
+                frontend_api_paths.add(clean_p.split("/")[1] if len(clean_p.split("/")) > 1 else clean_p)
+        except OSError:
+            pass
 
     seen_routes: set[str] = set()
     results: list[AffectedAPI] = []
@@ -501,17 +544,23 @@ def _find_apis(
         key = f"{route.http_method}:{route.path}"
         if key in seen_routes:
             continue
-        if route.file not in relevant_files:
+
+        route_prefix = route.path.strip("/").split("/")[0] if route.path.strip("/") else ""
+        is_frontend_match = bool(frontend_api_paths and route_prefix in frontend_api_paths)
+
+        if route.file not in relevant_files and not is_frontend_match:
             continue
         seen_routes.add(key)
 
         # Explain why this route is affected
         if route.file == target_file:
-            reason = f"Defined in the changed file `{target_file}`"
+            reason = f"Route handler directly defined in `{target_file}` — any contract change will alter the public endpoint interface."
+        elif is_frontend_match:
+            reason = f"Frontend `{target_file}` makes API requests to `{route.path}` — contract changes on this endpoint directly impact user interactions."
         elif route.file in {c.file for c in directly}:
-            reason = f"Handler `{route.handler_function}` in a directly affected file"
+            reason = f"Route handler `{route.handler_function}` calls the directly affected component — changes to payload, status codes, or errors may impact clients."
         else:
-            reason = f"Handler `{route.handler_function}` in a transitively affected file"
+            reason = f"Route handler `{route.handler_function}` transitively executes `{target_symbol}` in its call chain."
 
         results.append(AffectedAPI(
             http_method=route.http_method,
@@ -538,10 +587,8 @@ def _find_db(
     Identify database tables that may be affected.
 
     Inclusion rules:
-      - Always include schema nodes when the target is a model or service
-      - Always include when signals contain "db_change" or "schema_change"
-      - Include only tables whose name appears in the target file's source
-        (prevents unrelated tables showing up)
+      - When target is a model or service, include tables referenced by word-boundary in the file.
+      - When signals contain 'db_change' or 'schema_change', match relevant tables based on file context.
     """
     if target_layer not in ("model", "service", "schema") and "db_change" not in signals and "schema_change" not in signals:
         return []
@@ -567,8 +614,11 @@ def _find_db(
         if tbl in seen:
             continue
 
-        # Include if table name appears in source OR signals indicate broad DB change
-        if tbl in source or any(s.lower() in tbl for s in symbol_names_lower) or "db_change" in signals:
+        # Check word-boundary match in source or exact symbol containment
+        table_in_source = bool(re.search(rf"\b{re.escape(tbl)}\b", source))
+        sym_match = any(tbl == s or (len(tbl) >= 4 and tbl in s) for s in symbol_names_lower)
+
+        if table_in_source or sym_match:
             seen.add(tbl)
             results.append(AffectedDB(
                 table_name=schema.table_name,

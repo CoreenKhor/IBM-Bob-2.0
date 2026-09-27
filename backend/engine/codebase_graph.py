@@ -244,6 +244,7 @@ class CodebaseGraphBuilder:
         """Run all analysis passes and return the completed graph."""
         python_files: list[tuple[str, str]] = []   # (rel_path, source)
         sql_files:    list[tuple[str, str]] = []
+        js_ts_files:  list[tuple[str, str]] = []
 
         # ── Pass 0: discover files ──────────────────────────────────────────
         for dirpath, dirnames, filenames in os.walk(self._root):
@@ -277,18 +278,22 @@ class CodebaseGraphBuilder:
                     python_files.append((rel_path, source))
                 elif ext == ".sql":
                     sql_files.append((rel_path, source))
+                elif ext in (".ts", ".tsx", ".js", ".jsx"):
+                    js_ts_files.append((rel_path, source))
 
-        # ── Pass 1: extract symbols and imports (AST) ───────────────────────
+        # ── Pass 1: extract symbols and imports ─────────────────────────────
         for rel_path, source in python_files:
             self._parse_python_file(rel_path, source)
+        for rel_path, source in js_ts_files:
+            self._parse_jsts_file(rel_path, source)
 
         # ── Pass 2: SQL schema nodes ─────────────────────────────────────────
         for rel_path, source in sql_files:
             self._parse_sql_file(rel_path, source)
 
-        # ── Pass 3: reference detection (regex over all .py files) ──────────
+        # ── Pass 3: reference detection (over .py and .ts/.tsx files) ───────
         all_symbol_names = {sym.name for sym in self._graph.symbols.values()}
-        for rel_path, source in python_files:
+        for rel_path, source in python_files + js_ts_files:
             self._detect_refs(rel_path, source, all_symbol_names)
 
         # ── Pass 4: API route detection ──────────────────────────────────────
@@ -399,9 +404,73 @@ class CodebaseGraphBuilder:
                 return tail
         return None   # external library
 
-    # -------------------------------------------------------------------------
-    # Pass 2 — SQL
-    # -------------------------------------------------------------------------
+    def _parse_jsts_file(self, rel_path: str, source: str) -> None:
+        """Extract exported components, functions, and imports from a JS/TS file."""
+        lines = source.splitlines()
+        dir_name = os.path.dirname(rel_path).replace("\\", "/")
+
+        # Regex for ES6 imports: import ... from './PaymentForm' or '@/components/...'
+        # e.g. import PaymentForm from './PaymentForm';
+        #      import { useState, useEffect } from 'react';
+        import_re = re.compile(r"""import\s+(?:(\w+)|\{([^}]+)\})\s+from\s+['"]([^'"]+)['"]""")
+        for match in import_re.finditer(source):
+            default_name = match.group(1)
+            named_imports = match.group(2)
+            module_path = match.group(3)
+
+            names = []
+            if default_name:
+                names.append(default_name)
+            if named_imports:
+                names.extend([n.strip().split(" as ")[0].strip() for n in named_imports.split(",") if n.strip()])
+
+            # Resolve relative import to codebase file
+            to_file = None
+            if module_path.startswith("."):
+                candidate_base = os.path.normpath(os.path.join(dir_name, module_path)).replace("\\", "/")
+                for ext in (".tsx", ".ts", ".jsx", ".js"):
+                    cand = f"{candidate_base}{ext}"
+                    if cand in self._graph.files:
+                        to_file = cand
+                        break
+
+            self._graph.imports.append(ImportEdge(
+                from_file=rel_path,
+                to_module=module_path,
+                to_file=to_file,
+                names=names,
+            ))
+
+        # Regex for exported functions, classes, and component declarations
+        # e.g. export default function Checkout(...)
+        #      export function PaymentForm(...)
+        #      function formatExpiry(...)
+        #      const Checkout = (...) =>
+        fn_re = re.compile(
+            r"""^(?:export\s+(?:default\s+)?)?(?:function|class|const|let)\s+([A-Za-z_][A-Za-z0-9_]*)""",
+            re.MULTILINE,
+        )
+
+        for i, line in enumerate(lines, start=1):
+            m = fn_re.search(line)
+            if m:
+                name = m.group(1)
+                # Skip react hooks or standard utility names if they are shadowed
+                if name in ("useState", "useEffect", "useCallback", "useMemo", "useRef"):
+                    continue
+                sym = SymbolNode(
+                    id=f"{rel_path}#{name}",
+                    name=name,
+                    kind="function" if "function" in line or "=>" in line else "class",
+                    file=rel_path,
+                    line_start=i,
+                    line_end=i,
+                    signature=line.strip()[:100],
+                    docstring="",
+                )
+                if sym.id not in self._graph.symbols:
+                    self._graph.symbols[sym.id] = sym
+                    self._graph.files[rel_path].symbols.append(name)
 
     def _parse_sql_file(self, rel_path: str, source: str) -> None:
         for i, line in enumerate(source.splitlines(), start=1):
@@ -433,11 +502,33 @@ class CodebaseGraphBuilder:
         Scan each line for references to known symbol names.
         Only record a reference when the name belongs to a DIFFERENT file.
         """
+        in_block_comment = False
         lines = source.splitlines()
         for lineno, line in enumerate(lines, start=1):
-            # Skip comment lines and string-only lines
-            stripped = line.lstrip()
-            if stripped.startswith("#"):
+            stripped = line.strip()
+
+            # Handle Python docstrings
+            if stripped.startswith('"""') or stripped.startswith("'''"):
+                if stripped.count('"""') % 2 == 1 or stripped.count("'''") % 2 == 1:
+                    in_block_comment = not in_block_comment
+                continue
+            if in_block_comment:
+                if '"""' in stripped or "'''" in stripped:
+                    in_block_comment = False
+                continue
+
+            # Handle JS/TS multiline comments
+            if stripped.startswith("/*") or stripped.startswith("/**"):
+                if "*/" not in stripped:
+                    in_block_comment = True
+                continue
+            if stripped.startswith("*") or stripped.startswith("*/"):
+                if "*/" in stripped:
+                    in_block_comment = False
+                continue
+
+            # Skip single line comments
+            if stripped.startswith("#") or stripped.startswith("//"):
                 continue
 
             for m in self._REF_PATTERN.finditer(line):

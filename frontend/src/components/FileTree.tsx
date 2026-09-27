@@ -18,11 +18,21 @@ const DIR_ICONS: Record<string, string> = {
 }
 
 export default function FileTree({ files, selectedFile, onSelect }: Props) {
-  const pyFiles = files.filter((f) => f.type === 'file' && f.path.endsWith('.py'))
+  const codeFiles = files.filter(
+    (f) =>
+      f.type === 'file' &&
+      (f.path.endsWith('.py') ||
+        f.path.endsWith('.tsx') ||
+        f.path.endsWith('.ts') ||
+        f.path.endsWith('.jsx') ||
+        f.path.endsWith('.js') ||
+        f.path.endsWith('.sql'))
+  )
 
   // Group by top-level directory
   const groups: Record<string, string[]> = {}
-  for (const f of pyFiles) {
+  for (const f of codeFiles) {
+
     const parts = f.path.split('/')
     const dir = parts.length > 1 ? parts[0] : '.'
     if (!groups[dir]) groups[dir] = []

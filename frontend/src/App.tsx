@@ -72,6 +72,7 @@ export default function App() {
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
               <AnalyzeForm
                 targetFile={selectedFile}
+                onFileSelect={setSelectedFile}
                 onSubmit={handleAnalyze}
                 loading={loading}
               />

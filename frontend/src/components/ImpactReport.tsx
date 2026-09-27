@@ -1,97 +1,176 @@
-import type { BlastRadiusReport, RiskArea, TestingSuggestion, RelatedAPI, RelatedDB } from '../types'
+import { useState } from 'react'
+import type { BlastRadiusReport, RiskArea, TestingSuggestion, RelatedAPI, RelatedDB, AffectedComponent, RelatedTest } from '../types'
 import MermaidDiagram from './MermaidDiagram'
 
 interface Props {
   report: BlastRadiusReport
 }
 
-// ── Style helpers ─────────────────────────────────────────────────────────────
+// ── Style mappings ────────────────────────────────────────────────────────────
 
-const RISK_BADGE: Record<string, string> = {
-  CRITICAL: 'bg-red-100 text-red-800 border-red-300',
-  HIGH:     'bg-orange-100 text-orange-800 border-orange-300',
-  MEDIUM:   'bg-yellow-100 text-yellow-800 border-yellow-300',
-  LOW:      'bg-green-100 text-green-800 border-green-300',
+const RISK_BADGE: Record<string, { bg: string; text: string; border: string; glow: string }> = {
+  CRITICAL: { bg: 'bg-red-500/10', text: 'text-red-700 dark:text-red-400', border: 'border-red-300', glow: 'shadow-red-100' },
+  HIGH:     { bg: 'bg-orange-500/10', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-300', glow: 'shadow-orange-100' },
+  MEDIUM:   { bg: 'bg-amber-500/10', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-300', glow: 'shadow-amber-100' },
+  LOW:      { bg: 'bg-emerald-500/10', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-300', glow: 'shadow-emerald-100' },
 }
 
-const RISK_BANNER: Record<string, string> = {
-  CRITICAL: 'border-red-400 bg-red-50',
-  HIGH:     'border-orange-400 bg-orange-50',
-  MEDIUM:   'border-yellow-400 bg-yellow-50',
-  LOW:      'border-green-400 bg-green-50',
+const RISK_BANNER: Record<string, { border: string; bg: string; gradient: string }> = {
+  CRITICAL: { border: 'border-l-red-500', bg: 'bg-red-50/40', gradient: 'from-red-500/5 to-transparent' },
+  HIGH:     { border: 'border-l-orange-500', bg: 'bg-orange-50/40', gradient: 'from-orange-500/5 to-transparent' },
+  MEDIUM:   { border: 'border-l-amber-500', bg: 'bg-amber-50/40', gradient: 'from-amber-500/5 to-transparent' },
+  LOW:      { border: 'border-l-emerald-500', bg: 'bg-emerald-50/40', gradient: 'from-emerald-500/5 to-transparent' },
 }
 
-const SEV_BADGE: Record<string, string> = {
-  critical: 'bg-red-100 text-red-700',
-  high:     'bg-orange-100 text-orange-700',
-  medium:   'bg-yellow-100 text-yellow-700',
-  low:      'bg-green-100 text-green-700',
+const SEV_CONFIG: Record<string, { badge: string; border: string; icon: string }> = {
+  critical: { badge: 'bg-red-100 text-red-700 border-red-200', border: 'border-red-200 bg-red-50/30', icon: '🚨' },
+  high:     { badge: 'bg-orange-100 text-orange-700 border-orange-200', border: 'border-orange-200 bg-orange-50/30', icon: '⚠️' },
+  medium:   { badge: 'bg-amber-100 text-amber-700 border-amber-200', border: 'border-amber-200 bg-amber-50/30', icon: '⚡' },
+  low:      { badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', border: 'border-emerald-200 bg-emerald-50/30', icon: 'ℹ️' },
 }
 
-const PRI_BADGE: Record<string, string> = {
-  must:     'bg-red-100 text-red-700',
-  should:   'bg-orange-100 text-orange-700',
-  consider: 'bg-blue-100 text-blue-700',
+const PRI_CONFIG: Record<string, { badge: string; label: string }> = {
+  must:     { badge: 'bg-red-600 text-white font-bold', label: 'MUST TEST' },
+  should:   { badge: 'bg-orange-500 text-white font-semibold', label: 'SHOULD TEST' },
+  consider: { badge: 'bg-blue-500 text-white', label: 'CONSIDER' },
 }
 
-const LAYER_COLOR: Record<string, string> = {
-  service:    'bg-blue-100 text-blue-700',
-  model:      'bg-indigo-100 text-indigo-700',
-  route:      'bg-purple-100 text-purple-700',
-  controller: 'bg-pink-100 text-pink-700',
-  test:       'bg-green-100 text-green-700',
-  frontend:   'bg-teal-100 text-teal-700',
+const LAYER_CONFIG: Record<string, { label: string; badge: string; icon: string }> = {
+  service:    { label: 'Service', badge: 'bg-blue-50 text-blue-700 border-blue-200', icon: '⚙️' },
+  model:      { label: 'Model', badge: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: '📦' },
+  route:      { label: 'Route / API', badge: 'bg-purple-50 text-purple-700 border-purple-200', icon: '🛣️' },
+  controller: { label: 'Controller', badge: 'bg-pink-50 text-pink-700 border-pink-200', icon: '🎛️' },
+  test:       { label: 'Test Suite', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: '🧪' },
+  frontend:   { label: 'Frontend UI', badge: 'bg-teal-50 text-teal-700 border-teal-200', icon: '🖼️' },
 }
 
-function Badge({ label, cls }: { label: string; cls: string }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
-      {label}
-    </span>
-  )
-}
+// ── Generic Card / Accordion ──────────────────────────────────────────────────
 
-function SectionCard({ title, count, accent, children }: {
+function ExpandableCard({
+  title,
+  subtitle,
+  icon,
+  count,
+  accent = 'border-gray-200',
+  defaultExpanded = true,
+  badgeText,
+  badgeColor,
+  children,
+}: {
   title: string
+  subtitle?: string
+  icon: string
   count?: number
   accent?: string
+  defaultExpanded?: boolean
+  badgeText?: string
+  badgeColor?: string
   children: React.ReactNode
 }) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+
   return (
-    <section className={`bg-white border rounded-xl p-5 shadow-sm ${accent ?? 'border-gray-200'}`}>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-        {count !== undefined && (
-          <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-            {count}
-          </span>
-        )}
-      </div>
-      {children}
+    <section className={`bg-white border rounded-xl shadow-xs transition-all duration-150 overflow-hidden ${accent}`}>
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-gray-50/70 transition-colors cursor-pointer select-none"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-xl shrink-0 p-1 rounded-md bg-gray-50 border border-gray-100">{icon}</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-gray-900 tracking-tight">{title}</h2>
+              {count !== undefined && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                  {count}
+                </span>
+              )}
+              {badgeText && (
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${badgeColor ?? 'bg-gray-100 text-gray-700'}`}>
+                  {badgeText}
+                </span>
+              )}
+            </div>
+            {subtitle && <p className="text-xs text-gray-500 mt-0.5 truncate">{subtitle}</p>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 ml-3 text-gray-400">
+          <span className="text-xs font-medium text-gray-400">{expanded ? 'Collapse' : 'Expand'}</span>
+          <span className="text-xs">{expanded ? '▲' : '▼'}</span>
+        </div>
+      </button>
+
+      {expanded && <div className="px-5 pb-5 pt-2 border-t border-gray-100">{children}</div>}
     </section>
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Item Cards ────────────────────────────────────────────────────────────────
 
-function RiskAreaItem({ area }: { area: RiskArea }) {
+function ComponentCard({ comp, isDirect }: { comp: AffectedComponent; isDirect: boolean }) {
+  const layer = LAYER_CONFIG[comp.layer] ?? { label: comp.layer, badge: 'bg-gray-100 text-gray-700', icon: '📄' }
+
   return (
-    <div className={`rounded-lg p-3 border ${SEV_BADGE[area.severity]?.replace('text-', 'border-').replace('bg-', 'bg-') ?? 'border-gray-200'} mb-2 last:mb-0`}>
-      <div className="flex items-start gap-2">
-        <Badge label={area.severity.toUpperCase()} cls={SEV_BADGE[area.severity] ?? ''} />
+    <div className={`p-3.5 rounded-lg border transition-all ${
+      isDirect
+        ? 'bg-orange-50/30 border-orange-200 hover:border-orange-300'
+        : 'bg-gray-50/40 border-gray-200 hover:border-gray-300'
+    }`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm shrink-0">{layer.icon}</span>
+          <span className="font-mono text-xs font-bold text-gray-900 truncate">
+            {comp.symbol}
+          </span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${layer.badge}`}>
+            {layer.label}
+          </span>
+          {comp.depth !== undefined && comp.depth > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono">
+              depth: {comp.depth}
+            </span>
+          )}
+        </div>
+        <code className="text-[11px] text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded font-mono shrink-0 truncate max-w-[200px]">
+          {comp.file}
+        </code>
+      </div>
+
+      <div className="mt-2.5 pt-2 border-t border-gray-200/50 flex items-start gap-2">
+        <span className="text-orange-500 font-bold text-xs shrink-0 select-none">→</span>
+        <p className="text-xs text-gray-700 leading-relaxed font-normal">
+          <span className="font-semibold text-gray-900">Why affected: </span>
+          {comp.reason}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function RiskAreaCard({ area }: { area: RiskArea }) {
+  const cfg = SEV_CONFIG[area.severity] ?? SEV_CONFIG.medium
+
+  return (
+    <div className={`rounded-xl p-4 border ${cfg.border} shadow-2xs`}>
+      <div className="flex items-start gap-3">
+        <span className="text-lg shrink-0 mt-0.5">{cfg.icon}</span>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-800">{area.title}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{area.description}</p>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider border ${cfg.badge}`}>
+              {area.severity}
+            </span>
+            <span className="text-xs font-semibold text-gray-800">{area.title}</span>
+          </div>
+          <p className="text-xs text-gray-600 leading-relaxed">{area.description}</p>
           {area.affected_files.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {area.affected_files.slice(0, 4).map((f) => (
-                <code key={f} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-200/50">
+              <span className="text-[11px] font-medium text-gray-500">Affected files:</span>
+              {area.affected_files.map((f) => (
+                <code key={f} className="text-[11px] bg-white border border-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-mono">
                   {f.split('/').pop()}
                 </code>
               ))}
-              {area.affected_files.length > 4 && (
-                <span className="text-xs text-gray-400">+{area.affected_files.length - 4} more</span>
-              )}
             </div>
           )}
         </div>
@@ -100,309 +179,361 @@ function RiskAreaItem({ area }: { area: RiskArea }) {
   )
 }
 
-function SuggestionItem({ s }: { s: TestingSuggestion }) {
-  return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
-      <Badge label={s.priority.toUpperCase()} cls={PRI_BADGE[s.priority] ?? 'bg-gray-100 text-gray-600'} />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-800 font-medium">{s.action}</p>
-        {s.detail && <p className="text-xs text-gray-500 mt-0.5">{s.detail}</p>}
-        {s.command && (
-          <code className="mt-1.5 block text-xs bg-gray-900 text-green-400 px-3 py-1.5 rounded font-mono">
-            $ {s.command}
-          </code>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function APIRow({ api }: { api: RelatedAPI }) {
-  const methodColor: Record<string, string> = {
-    GET: 'bg-blue-100 text-blue-700',
-    POST: 'bg-green-100 text-green-700',
-    PUT: 'bg-yellow-100 text-yellow-700',
-    PATCH: 'bg-orange-100 text-orange-700',
-    DELETE: 'bg-red-100 text-red-700',
+function APICard({ api }: { api: RelatedAPI }) {
+  const methodColors: Record<string, string> = {
+    GET: 'bg-blue-600 text-white',
+    POST: 'bg-emerald-600 text-white',
+    PUT: 'bg-amber-600 text-white',
+    PATCH: 'bg-orange-600 text-white',
+    DELETE: 'bg-rose-600 text-white',
   }
+
   return (
-    <div className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
-      <Badge label={api.http_method} cls={methodColor[api.http_method] ?? 'bg-gray-100 text-gray-600'} />
-      <div className="flex-1 min-w-0">
-        <code className="text-sm font-mono text-gray-800">{api.path}</code>
-        <p className="text-xs text-gray-500 mt-0.5">{api.reason}</p>
+    <div className="p-3.5 rounded-lg border border-purple-200 bg-purple-50/20 hover:border-purple-300 transition-colors">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${methodColors[api.http_method] ?? 'bg-gray-600 text-white'}`}>
+            {api.http_method}
+          </span>
+          <code className="text-xs font-mono font-semibold text-gray-900 truncate">{api.path}</code>
+        </div>
+        <span className="text-[11px] font-mono text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded shrink-0">
+          {api.handler}
+        </span>
       </div>
-      <code className="text-xs text-gray-400 font-mono shrink-0">{api.handler}</code>
+      <p className="text-xs text-gray-600 mt-2 pl-1 leading-relaxed">
+        <span className="text-purple-600 font-medium">Route Binding: </span>{api.reason}
+      </p>
     </div>
   )
 }
 
-function DBRow({ db }: { db: RelatedDB }) {
+function DBCard({ db }: { db: RelatedDB }) {
   return (
-    <div className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
-      <span className="text-sm">🗄</span>
-      <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium font-mono text-gray-800">{db.table_name}</span>
-        <Badge label={db.operation} cls="ml-2 bg-gray-100 text-gray-600" />
-        <p className="text-xs text-gray-500 mt-0.5">{db.reason}</p>
+    <div className="p-3.5 rounded-lg border border-blue-200 bg-blue-50/20 hover:border-blue-300 transition-colors">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🗄️</span>
+          <span className="font-mono text-xs font-bold text-gray-900">{db.table_name}</span>
+          <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
+            {db.operation}
+          </span>
+        </div>
+        <span className="text-[11px] font-mono text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded">
+          {db.file}:{db.line}
+        </span>
+      </div>
+      <p className="text-xs text-gray-600 mt-2 pl-6 leading-relaxed">{db.reason}</p>
+    </div>
+  )
+}
+
+function TestItem({ test }: { test: RelatedTest }) {
+  return (
+    <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/20 hover:border-emerald-300 transition-colors">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-emerald-600 text-sm">🧪</span>
+          <span className="font-mono text-xs font-bold text-gray-900 truncate">{test.function}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">
+            {test.test_type}
+          </span>
+        </div>
+        <code className="text-[11px] text-gray-500 font-mono shrink-0">{test.file}</code>
+      </div>
+      <p className="text-xs text-gray-600 mt-1.5 pl-6">{test.reason}</p>
+      {test.command && (
+        <div className="mt-2 pl-6">
+          <code className="inline-block text-[11px] bg-gray-900 text-emerald-400 px-2.5 py-1 rounded font-mono">
+            $ {test.command}
+          </code>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SuggestionCard({ s }: { s: TestingSuggestion }) {
+  const pri = PRI_CONFIG[s.priority] ?? PRI_CONFIG.consider
+
+  return (
+    <div className="p-3.5 rounded-lg border border-gray-200 bg-white hover:shadow-xs transition-shadow">
+      <div className="flex items-start gap-3">
+        <span className={`text-[9px] px-2 py-0.5 rounded shrink-0 mt-0.5 ${pri.badge}`}>
+          {pri.label}
+        </span>
+        <div className="flex-1 min-w-0">
+          <h4 className="text-xs font-bold text-gray-900">{s.action}</h4>
+          {s.detail && <p className="text-xs text-gray-600 mt-1 leading-relaxed">{s.detail}</p>}
+          {s.command && (
+            <div className="mt-2">
+              <code className="inline-block text-[11px] bg-gray-900 text-emerald-400 px-3 py-1.5 rounded-md font-mono">
+                $ {s.command}
+              </code>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export default function ImpactReport({ report }: Props) {
   const { meta, target, impact_categories: ic, mermaid_diagram, validation_plan, mitigation } = report
-  const riskStyle = RISK_BADGE[meta.risk_level] ?? RISK_BADGE.MEDIUM
-  const bannerStyle = RISK_BANNER[meta.risk_level] ?? RISK_BANNER.MEDIUM
+  const riskBadge = RISK_BADGE[meta.risk_level] ?? RISK_BADGE.MEDIUM
+  const banner = RISK_BANNER[meta.risk_level] ?? RISK_BANNER.MEDIUM
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 pb-12">
 
-      {/* ── Executive Summary Banner ───────────────────────────────────────── */}
-      <section className={`border-l-4 rounded-xl p-5 shadow-sm ${bannerStyle}`}>
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold border ${riskStyle}`}>
-            {meta.risk_level} RISK
-          </span>
-          <span className="text-xs text-gray-600 bg-white/70 border border-gray-200 px-2.5 py-1 rounded-full">
-            {meta.total_impacted_files} files affected
-          </span>
-          <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full">
-            {meta.direct_callers} direct callers
-          </span>
-          {meta.transitive_callers > 0 && (
-            <span className="text-xs text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-full">
-              {meta.transitive_callers} indirect
+      {/* ── 1. Executive Summary & Blast Metrics Banner ─────────────────────── */}
+      <section className={`border-l-4 rounded-xl p-5 shadow-xs bg-white border border-gray-200 ${banner.border}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2.5">
+            <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-black tracking-wider uppercase border ${riskBadge.bg} ${riskBadge.text} ${riskBadge.border}`}>
+              💥 {meta.risk_level} RISK
             </span>
-          )}
-          <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full">
-            {meta.test_files_affected} test files
-          </span>
+            <span className="text-xs text-gray-500 font-medium">
+              Blast Radius Analysis
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-400 font-mono">
+            {meta.generated_at ? new Date(meta.generated_at).toLocaleTimeString() : 'Live Scan'}
+          </div>
         </div>
-        <div className="text-sm text-gray-700 space-y-1">
-          <p>
-            <span className="font-medium">Target: </span>
-            <code className="bg-white/80 border border-gray-200 px-1.5 py-0.5 rounded text-xs font-mono">
-              {target.symbol}
-            </code>
-            {target.kind && (
-              <Badge label={target.kind} cls="ml-2 bg-white/80 border border-gray-200 text-gray-600" />
-            )}
-          </p>
-          <p>
-            <span className="font-medium">File: </span>
-            <code className="text-xs text-gray-600">{target.file}</code>
-          </p>
-          {meta.change_description && (
-            <p><span className="font-medium">Change: </span>{meta.change_description}</p>
-          )}
-          {target.signature && (
-            <p className="mt-1">
-              <code className="text-xs bg-white/80 border border-gray-200 px-2 py-0.5 rounded font-mono text-gray-700">
+
+        {/* Target details */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 bg-gray-50/80 rounded-lg border border-gray-100 text-xs">
+          <div>
+            <span className="text-gray-400 font-medium">Target Component:</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="font-mono font-bold text-gray-900 text-sm">{target.symbol}</span>
+              {target.kind && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white border border-gray-200 text-gray-600 uppercase">
+                  {target.kind}
+                </span>
+              )}
+            </div>
+            <p className="text-gray-500 font-mono mt-0.5 truncate">{target.file}</p>
+          </div>
+          <div>
+            <span className="text-gray-400 font-medium">Proposed Change:</span>
+            <p className="font-medium text-gray-800 mt-0.5 leading-relaxed">
+              {meta.change_description || 'No description provided'}
+            </p>
+            {target.signature && (
+              <code className="text-[11px] text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded font-mono block mt-1 truncate">
                 {target.signature}
               </code>
-            </p>
-          )}
+            )}
+          </div>
+        </div>
+
+        {/* Key Metrics Counters */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-3.5">
+          <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
+            <div className="text-lg font-black text-gray-900">{meta.total_impacted_files}</div>
+            <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Files Impacted</div>
+          </div>
+          <div className="bg-white border border-orange-200 rounded-lg p-3 text-center bg-orange-50/20">
+            <div className="text-lg font-black text-orange-700">{meta.direct_callers}</div>
+            <div className="text-[11px] font-medium text-orange-800 uppercase tracking-wide">Direct Callers</div>
+          </div>
+          <div className="bg-white border border-purple-200 rounded-lg p-3 text-center bg-purple-50/20">
+            <div className="text-lg font-black text-purple-700">{meta.transitive_callers}</div>
+            <div className="text-[11px] font-medium text-purple-800 uppercase tracking-wide">Indirect Callers</div>
+          </div>
+          <div className="bg-white border border-emerald-200 rounded-lg p-3 text-center bg-emerald-50/20">
+            <div className="text-lg font-black text-emerald-700">{meta.test_files_affected}</div>
+            <div className="text-[11px] font-medium text-emerald-800 uppercase tracking-wide">Affected Tests</div>
+          </div>
         </div>
       </section>
 
-      {/* ── Blast Radius Map ───────────────────────────────────────────────── */}
-      <SectionCard title="Blast Radius Map">
-        <MermaidDiagram diagram={mermaid_diagram} />
-      </SectionCard>
+      {/* ── 2. Visual Dependency & Blast Radius Map ─────────────────────────── */}
+      <ExpandableCard
+        title="Visual Blast Radius Map"
+        subtitle="End-to-end dependency graph showing upstream callers, API ingress, and affected data sinks"
+        icon="🗺️"
+        accent="border-blue-200"
+      >
+        <div className="p-2 bg-gray-50/50 rounded-lg border border-gray-100">
+          <MermaidDiagram diagram={mermaid_diagram} />
+        </div>
+      </ExpandableCard>
 
-      {/* ── Risk Areas ────────────────────────────────────────────────────── */}
+      {/* ── 3. Risk Areas & Hazard Alerts ──────────────────────────────────── */}
       {ic.risk_areas.length > 0 && (
-        <SectionCard
-          title="⚠ Risk Areas"
+        <ExpandableCard
+          title="Critical Risk Areas & Contract Hazards"
+          subtitle="Potential breaking hazards, unhandled schema changes, or missing safeguards"
+          icon="🚨"
           count={ic.risk_areas.length}
-          accent="border-orange-200"
+          accent="border-red-200"
+          badgeText="Requires Attention"
+          badgeColor="bg-red-100 text-red-800 border-red-200"
         >
-          {ic.risk_areas.map((area, i) => (
-            <RiskAreaItem key={i} area={area} />
-          ))}
-        </SectionCard>
+          <div className="space-y-2.5">
+            {ic.risk_areas.map((area, i) => (
+              <RiskAreaCard key={i} area={area} />
+            ))}
+          </div>
+        </ExpandableCard>
       )}
 
-      {/* ── Direct + Indirect Impact ──────────────────────────────────────── */}
-      <SectionCard
-        title="Directly Affected"
+      {/* ── 4. Directly Affected Components ────────────────────────────────── */}
+      <ExpandableCard
+        title="Directly Affected Components"
+        subtitle="Modules, controllers, and functions directly calling or referencing the modified symbol"
+        icon="🎯"
         count={ic.directly_affected.length}
+        accent="border-orange-200"
       >
         {ic.directly_affected.length === 0 ? (
-          <p className="text-sm text-gray-400">No directly affected components found.</p>
+          <p className="text-xs text-gray-500 py-2">No direct callers detected in the indexed codebase.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-400 uppercase border-b border-gray-100">
-                  <th className="pb-2 pr-3">File</th>
-                  <th className="pb-2 pr-3">Symbol</th>
-                  <th className="pb-2 pr-3">Layer</th>
-                  <th className="pb-2">Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ic.directly_affected.map((c, i) => (
-                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="py-2 pr-3 font-mono text-xs text-gray-600 max-w-[160px] truncate">
-                      {c.file.split('/').pop()}
-                    </td>
-                    <td className="py-2 pr-3 font-mono text-xs font-medium text-orange-700">{c.symbol}</td>
-                    <td className="py-2 pr-3">
-                      <Badge label={c.layer} cls={LAYER_COLOR[c.layer] ?? 'bg-gray-100 text-gray-600'} />
-                    </td>
-                    <td className="py-2 text-xs text-gray-500">{c.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 gap-2">
+            {ic.directly_affected.map((c, i) => (
+              <ComponentCard key={i} comp={c} isDirect={true} />
+            ))}
           </div>
         )}
-      </SectionCard>
+      </ExpandableCard>
 
+      {/* ── 5. Indirectly Affected Components ──────────────────────────────── */}
       {ic.indirectly_affected.length > 0 && (
-        <SectionCard
-          title="Indirectly Affected"
+        <ExpandableCard
+          title="Indirectly Affected Components (Transitive)"
+          subtitle="Upstream callers and downstream dependencies impacted across multi-hop calls"
+          icon="⛓️"
           count={ic.indirectly_affected.length}
+          accent="border-purple-200"
+          defaultExpanded={false}
         >
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-400 uppercase border-b border-gray-100">
-                  <th className="pb-2 pr-3">File</th>
-                  <th className="pb-2 pr-3">Symbol</th>
-                  <th className="pb-2 pr-3">Layer</th>
-                  <th className="pb-2">Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ic.indirectly_affected.map((c, i) => (
-                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="py-2 pr-3 font-mono text-xs text-gray-500 max-w-[160px] truncate">
-                      {c.file.split('/').pop()}
-                    </td>
-                    <td className="py-2 pr-3 font-mono text-xs text-gray-600">{c.symbol}</td>
-                    <td className="py-2 pr-3">
-                      <Badge label={c.layer} cls={LAYER_COLOR[c.layer] ?? 'bg-gray-100 text-gray-600'} />
-                    </td>
-                    <td className="py-2 text-xs text-gray-400">{c.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 gap-2">
+            {ic.indirectly_affected.map((c, i) => (
+              <ComponentCard key={i} comp={c} isDirect={false} />
+            ))}
           </div>
-        </SectionCard>
+        </ExpandableCard>
       )}
 
-      {/* ── API Impact ────────────────────────────────────────────────────── */}
-      {ic.related_apis.length > 0 && (
-        <SectionCard
-          title="API Surface Impact"
+      {/* ── 6. APIs & Database Components Side-by-Side ─────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* APIs */}
+        <ExpandableCard
+          title="API Endpoints Ingress"
+          subtitle="Public or internal routes exposed to this change"
+          icon="🛣️"
           count={ic.related_apis.length}
           accent="border-purple-200"
         >
-          {ic.related_apis.map((api, i) => <APIRow key={i} api={api} />)}
-        </SectionCard>
-      )}
+          {ic.related_apis.length === 0 ? (
+            <p className="text-xs text-gray-400 py-1">No API routes directly dependent on this component.</p>
+          ) : (
+            <div className="space-y-2">
+              {ic.related_apis.map((api, i) => (
+                <APICard key={i} api={api} />
+              ))}
+            </div>
+          )}
+        </ExpandableCard>
 
-      {/* ── Database Impact ───────────────────────────────────────────────── */}
-      {ic.related_db.length > 0 && (
-        <SectionCard
-          title="Database Impact"
+        {/* Database */}
+        <ExpandableCard
+          title="Database Persistence"
+          subtitle="Impacted database tables, models, and queries"
+          icon="🗄️"
           count={ic.related_db.length}
           accent="border-blue-200"
         >
-          {ic.related_db.map((db, i) => <DBRow key={i} db={db} />)}
-        </SectionCard>
-      )}
-
-      {/* ── Test Coverage ─────────────────────────────────────────────────── */}
-      {ic.related_tests.length > 0 && (
-        <SectionCard
-          title="Tests to Run"
-          count={ic.related_tests.length}
-          accent="border-green-200"
-        >
-          <div className="space-y-1">
-            {ic.related_tests.map((t, i) => (
-              <div key={i} className="flex items-start gap-2 py-1.5 border-b border-gray-100 last:border-0">
-                <span className="text-green-500 text-xs mt-0.5">✓</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-mono font-medium text-gray-700">{t.function}</p>
-                  <p className="text-xs text-gray-400">{t.file.split('/').pop()} · {t.reason}</p>
-                </div>
-                {t.command && (
-                  <code className="text-xs text-gray-400 font-mono shrink-0 hidden lg:block">
-                    {t.command.split(' ').slice(0, 3).join(' ')}
-                  </code>
-                )}
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* ── Risk Breakdown Grid ───────────────────────────────────────────── */}
-      <SectionCard title="Risk Breakdown">
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {Object.entries(ic.risk_breakdown)
-            .filter(([k]) => k !== 'overall')
-            .map(([key, val]) => (
-              <div key={key} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                <dt className="text-xs text-gray-400 capitalize mb-1">{key.replace(/_/g, ' ')}</dt>
-                <dd className={`text-sm font-semibold capitalize ${
-                  val === 'high' || val === 'critical' ? 'text-red-600' :
-                  val === 'medium' ? 'text-yellow-600' : 'text-green-600'
-                }`}>{val as string}</dd>
-              </div>
-            ))}
-        </dl>
-      </SectionCard>
-
-      {/* ── Testing Suggestions ───────────────────────────────────────────── */}
-      <SectionCard title="Testing Suggestions" count={ic.testing_suggestions.length}>
-        {ic.testing_suggestions.map((s, i) => <SuggestionItem key={i} s={s} />)}
-        {/* Fallback from legacy validation_plan */}
-        {ic.testing_suggestions.length === 0 && validation_plan.test_commands.length > 0 && (
-          <div>
-            <p className="text-xs font-medium text-gray-500 uppercase mb-2">Test Commands</p>
-            <ul className="space-y-1">
-              {validation_plan.test_commands.map((cmd, i) => (
-                <li key={i} className="font-mono text-xs bg-gray-900 text-green-400 px-3 py-1.5 rounded">
-                  $ {cmd}
-                </li>
+          {ic.related_db.length === 0 ? (
+            <p className="text-xs text-gray-400 py-1">No database operations impacted.</p>
+          ) : (
+            <div className="space-y-2">
+              {ic.related_db.map((db, i) => (
+                <DBCard key={i} db={db} />
               ))}
-            </ul>
-          </div>
-        )}
-      </SectionCard>
+            </div>
+          )}
+        </ExpandableCard>
+      </div>
 
-      {/* ── Mitigation & Rollback ─────────────────────────────────────────── */}
-      <SectionCard title="Mitigation & Rollback">
-        <dl className="text-sm grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-            <dt className="text-xs text-gray-400 mb-1">Feature Flag</dt>
-            <dd className="font-mono text-xs text-gray-800 break-all">{mitigation.feature_flag}</dd>
+      {/* ── 7. Related Tests ─────────────────────────────────────────────────── */}
+      {ic.related_tests.length > 0 && (
+        <ExpandableCard
+          title="Related Test Suites"
+          subtitle="Existing test files covering the target and its callers"
+          icon="🧪"
+          count={ic.related_tests.length}
+          accent="border-emerald-200"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {ic.related_tests.map((test, i) => (
+              <TestItem key={i} test={test} />
+            ))}
           </div>
-          <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-            <dt className="text-xs text-gray-400 mb-1">Deploy Strategy</dt>
-            <dd className="text-sm font-semibold capitalize text-gray-800">{mitigation.deployment_strategy}</dd>
+        </ExpandableCard>
+      )}
+
+      {/* ── 8. Recommended Testing & Validation Plan ────────────────────────── */}
+      <ExpandableCard
+        title="Recommended Testing & Validation Plan"
+        subtitle="Actionable steps and test execution commands recommended before deployment"
+        icon="📋"
+        count={ic.testing_suggestions.length}
+        accent="border-indigo-200"
+      >
+        <div className="space-y-2.5">
+          {ic.testing_suggestions.map((s, i) => (
+            <SuggestionCard key={i} s={s} />
+          ))}
+          {ic.testing_suggestions.length === 0 && validation_plan.test_commands.length > 0 && (
+            <div className="space-y-1.5">
+              {validation_plan.test_commands.map((cmd, i) => (
+                <code key={i} className="block text-xs bg-gray-900 text-emerald-400 px-3 py-2 rounded-lg font-mono">
+                  $ {cmd}
+                </code>
+              ))}
+            </div>
+          )}
+        </div>
+      </ExpandableCard>
+
+      {/* ── 9. Mitigation & Safe Rollback Strategy ───────────────────────────── */}
+      <ExpandableCard
+        title="Mitigation & Safe Deployment Strategy"
+        subtitle="Rollback feasibility, feature flag recommendations, and deployment safeguards"
+        icon="🛡️"
+        accent="border-teal-200"
+        defaultExpanded={false}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-gray-50/70 p-3 rounded-lg border border-gray-200">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Feature Flag</span>
+            <code className="text-xs font-mono font-bold text-gray-800 break-all">{mitigation.feature_flag || 'None'}</code>
           </div>
-          <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-            <dt className="text-xs text-gray-400 mb-1">Rollback Complexity</dt>
-            <dd className={`text-sm font-semibold capitalize ${
-              mitigation.rollback_complexity === 'high' ? 'text-red-600' : 'text-green-600'
-            }`}>{mitigation.rollback_complexity}</dd>
+          <div className="bg-gray-50/70 p-3 rounded-lg border border-gray-200">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Deployment Strategy</span>
+            <span className="text-xs font-semibold text-gray-800">{mitigation.deployment_strategy || 'Standard Rollout'}</span>
           </div>
-          <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-            <dt className="text-xs text-gray-400 mb-1">Rollback Note</dt>
-            <dd className="text-xs text-gray-600">{mitigation.rollback_note}</dd>
+          <div className="bg-gray-50/70 p-3 rounded-lg border border-gray-200">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Rollback Complexity</span>
+            <span className={`text-xs font-bold uppercase ${
+              mitigation.rollback_complexity === 'high' ? 'text-red-600' :
+              mitigation.rollback_complexity === 'medium' ? 'text-amber-600' : 'text-emerald-600'
+            }`}>
+              {mitigation.rollback_complexity || 'Low'}
+            </span>
           </div>
-        </dl>
-      </SectionCard>
+          <div className="bg-gray-50/70 p-3 rounded-lg border border-gray-200">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Rollback Note</span>
+            <p className="text-xs text-gray-600 leading-tight">{mitigation.rollback_note || 'Revert commit safe.'}</p>
+          </div>
+        </div>
+      </ExpandableCard>
 
     </div>
   )

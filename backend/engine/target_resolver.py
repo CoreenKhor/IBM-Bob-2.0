@@ -8,6 +8,7 @@ Falls back to direct AST parsing for symbols not yet in the cached graph.
 from __future__ import annotations
 import ast
 import os
+import re
 from engine.codebase_graph import get_graph, DEMO_ROOT
 
 
@@ -42,16 +43,28 @@ def resolve_target(target_file: str, target_symbol: str) -> dict:
         }
 
     # Symbol not in graph (file added after graph was built, or typo check)
-    # Fall back to direct parse for a helpful error message.
+    # Fall back to direct parse for Python, or regex for TS/JS.
     try:
         source = open(abs_path, encoding="utf-8").read()
-        tree = ast.parse(source)
-    except (OSError, SyntaxError) as exc:
-        return {"error": f"Cannot parse {target_file}: {exc}"}
+    except OSError as exc:
+        return {"error": f"Cannot read {target_file}: {exc}"}
 
-    defined = [
-        n.name for n in ast.walk(tree)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-    ]
+    ext = os.path.splitext(target_file)[1].lower()
+    if ext == ".py":
+        try:
+            tree = ast.parse(source)
+            defined = [
+                n.name for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            ]
+        except SyntaxError as exc:
+            return {"error": f"Cannot parse {target_file}: {exc}"}
+    else:
+        fn_re = re.compile(
+            r"""^(?:export\s+(?:default\s+)?)?(?:function|class|const|let)\s+([A-Za-z_][A-Za-z0-9_]*)""",
+            re.MULTILINE,
+        )
+        defined = fn_re.findall(source)
+
     hint = f"  Available symbols: {', '.join(sorted(set(defined)))}" if defined else ""
     return {"error": f"Symbol '{target_symbol}' not found in {target_file}.{hint}"}
