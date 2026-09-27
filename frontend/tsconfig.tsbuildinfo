@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/analyzeform.tsx","./src/components/filetree.tsx","./src/components/impactreport.tsx","./src/components/mermaiddiagram.tsx"],"version":"5.6.3"}
