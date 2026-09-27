@@ -21,15 +21,16 @@ def resolve_target(target_file: str, target_symbol: str) -> dict:
     or
       { error: "..." }
     """
+    clean_target_file = target_file.strip().replace("\\", "/")
     # Guard against path traversal
-    abs_path = os.path.realpath(os.path.join(DEMO_ROOT, target_file))
+    abs_path = os.path.realpath(os.path.join(DEMO_ROOT, clean_target_file))
     if not abs_path.startswith(DEMO_ROOT):
         return {"error": "Path traversal detected — target_file must be inside demo codebase"}
     if not os.path.isfile(abs_path):
-        return {"error": f"File not found: {target_file}"}
+        return {"error": f"File not found: {clean_target_file}"}
 
     graph = get_graph()
-    sym = graph.get_symbol(target_file, target_symbol)
+    sym = graph.get_symbol(clean_target_file, target_symbol)
 
     if sym:
         return {
@@ -41,6 +42,7 @@ def resolve_target(target_file: str, target_symbol: str) -> dict:
             "signature":  sym.signature,
             "docstring":  sym.docstring,
         }
+
 
     # Symbol not in graph (file added after graph was built, or typo check)
     # Fall back to direct parse for Python, or regex for TS/JS.

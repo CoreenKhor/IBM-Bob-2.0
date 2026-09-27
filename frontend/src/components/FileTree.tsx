@@ -21,6 +21,7 @@ export default function FileTree({ files, selectedFile, onSelect }: Props) {
   const codeFiles = files.filter(
     (f) =>
       f.type === 'file' &&
+      !f.path.endsWith('__init__.py') &&
       (f.path.endsWith('.py') ||
         f.path.endsWith('.tsx') ||
         f.path.endsWith('.ts') ||
@@ -28,6 +29,7 @@ export default function FileTree({ files, selectedFile, onSelect }: Props) {
         f.path.endsWith('.js') ||
         f.path.endsWith('.sql'))
   )
+
 
   // Group by top-level directory
   const groups: Record<string, string[]> = {}

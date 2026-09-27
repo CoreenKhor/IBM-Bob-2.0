@@ -9,8 +9,10 @@ analysis fields under `impact_categories`.
 """
 
 from __future__ import annotations
+import re
 from datetime import datetime, timezone
 from engine.impact_analyzer import ImpactResult
+
 
 
 def build_report(result: ImpactResult) -> dict:
@@ -150,14 +152,15 @@ def _build_mermaid(r: ImpactResult) -> str:
     """
     lines = ["graph TD"]
     target_id = _nid(r.target_symbol)
-    lines.append(f'  {target_id}["{r.target_symbol}\\n{_short(r.target_file)}"]')
+    short_target = _short(r.target_file)
+    lines.append(f'  {target_id}["{r.target_symbol} ({short_target})"]')
     lines.append(f'  style {target_id} fill:#f87171,stroke:#b91c1c,stroke-width:2px,color:#fff')
 
     seen: set[str] = set()
 
     for comp in r.directly_affected:
         nid = _nid(comp.file)
-        if nid in seen:
+        if nid in seen or nid == target_id:
             continue
         seen.add(nid)
         label = _short(comp.file)
@@ -168,7 +171,7 @@ def _build_mermaid(r: ImpactResult) -> str:
 
     for comp in r.indirectly_affected:
         nid = _nid(comp.file)
-        if nid in seen:
+        if nid in seen or nid == target_id:
             continue
         seen.add(nid)
         label = _short(comp.file)
@@ -181,7 +184,7 @@ def _build_mermaid(r: ImpactResult) -> str:
     for t in r.related_tests:
         f = t["file"]
         nid = _nid(f)
-        if nid in seen or f in test_files_shown:
+        if nid in seen or f in test_files_shown or nid == target_id:
             continue
         test_files_shown.add(f)
         seen.add(nid)
@@ -191,18 +194,20 @@ def _build_mermaid(r: ImpactResult) -> str:
 
     # Show DB tables (grouped as one node per table)
     for db in r.related_db[:3]:
-        nid = _nid("db_" + db.table_name)
-        if nid in seen:
+        safe_table = re.sub(r'[^a-zA-Z0-9_]', '_', db.table_name)
+        nid = _nid("db_" + safe_table)
+        if nid in seen or nid == target_id:
             continue
         seen.add(nid)
-        lines.append(f'  {nid}["🗄 {db.table_name}"]')
+        lines.append(f'  {nid}["DB: {db.table_name}"]')
         lines.append(f'  {target_id} --> {nid}')
         lines.append(f'  style {nid} fill:#bfdbfe,stroke:#2563eb,color:#1e3a8a')
 
     # Show affected API routes (first 3 only for readability)
     for api in r.related_apis[:3]:
-        nid = _nid(f"api_{api.http_method}_{api.path}")
-        if nid in seen:
+        safe_api = re.sub(r'[^a-zA-Z0-9_]', '_', f"{api.http_method}_{api.path}")
+        nid = _nid(f"api_{safe_api}")
+        if nid in seen or nid == target_id:
             continue
         seen.add(nid)
         lines.append(f'  {nid}["{api.http_method} {api.path}"]')
@@ -212,18 +217,24 @@ def _build_mermaid(r: ImpactResult) -> str:
     return "\n".join(lines)
 
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _nid(s: str) -> str:
-    """Convert a string into a valid Mermaid node identifier."""
-    return s.replace("/", "_").replace(".", "_").replace("-", "_").replace(" ", "_")
+    """Convert a string into a valid Mermaid node identifier (alphanumeric and underscore only)."""
+    clean = re.sub(r'[^a-zA-Z0-9_]', '_', s)
+    if clean and clean[0].isdigit():
+        clean = "n_" + clean
+    return clean or "node"
 
 
 def _short(path: str) -> str:
     """Return just the filename portion of a path."""
-    return path.rsplit("/", 1)[-1]
+    clean = path.replace("\\", "/").rsplit("/", 1)[-1]
+    return clean.replace('"', "'")
+
 
 
 def _layer_colour(layer: str, depth: int) -> tuple[str, str]:

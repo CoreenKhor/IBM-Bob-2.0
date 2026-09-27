@@ -451,6 +451,7 @@ class CodebaseGraphBuilder:
             re.MULTILINE,
         )
 
+
         for i, line in enumerate(lines, start=1):
             m = fn_re.search(line)
             if m:

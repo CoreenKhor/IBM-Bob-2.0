@@ -68,13 +68,23 @@ export default function AnalyzeForm({ targetFile, onFileSelect, onSubmit, loadin
   useEffect(() => {
     if (!targetFile) {
       setSymbols([])
+      setSymbol('')
       return
     }
     setSymbolsLoading(true)
     fetchSymbols(targetFile)
-      .then(setSymbols)
+      .then((loaded) => {
+        setSymbols(loaded)
+        // If current symbol is not in the loaded symbols, pick the first valid symbol
+        if (loaded.length > 0 && !loaded.includes(symbol)) {
+          setSymbol(loaded[0])
+        } else if (loaded.length === 0) {
+          setSymbol('')
+        }
+      })
       .finally(() => setSymbolsLoading(false))
   }, [targetFile])
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
